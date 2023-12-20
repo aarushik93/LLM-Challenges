@@ -1,26 +1,67 @@
 from openai import OpenAI
+from transformers import pipeline
+
 
 class llm:
     def __init__(self):
-        self.full_message_history = [] # This is the full conversation history https://platform.openai.com/docs/api-reference/chat/object . 
-        self.client = OpenAI(api_key='') # <== Put API key provided in the challenge email here.
-        self.DEBUG = False # Set this to True to see the context window being sent to the LLM.
+        self.full_message_history = []  # This is the full conversation history https://platform.openai.com/docs/api-reference/chat/object .
+        self.client = OpenAI(
+            api_key='')  # <== Put API key provided in the challenge email here.
+        self.DEBUG = True  # Set this to True to see the context window being sent to the LLM.
+        self.max_context_length = 4096
+        self.summarizer = pipeline("summarization")
         if self.client.api_key == '':
-            raise ValueError("\033[91m Please enter the OpenAI API key which was provided in the challenge email into llm.py.\033[0m")
+            raise ValueError(
+                "\033[91m Please enter the OpenAI API key which was provided in the challenge email into llm.py.\033[0m")
 
     def manage_context_window(self):
+        # Define thresholds for different tiers
+        recent_threshold = 10  # Most recent 10 messages are kept as-is
+        older_threshold = 30  # Messages from 11 to 30 are lightly summarized
+        oldest_threshold = len(self.full_message_history) - older_threshold  # The rest are heavily summarized
+
+        recent_messages = self.full_message_history[-recent_threshold:]
+        older_messages = self.full_message_history[
+                         -older_threshold:-recent_threshold] if older_threshold > recent_threshold else []
+        oldest_messages = self.full_message_history[:oldest_threshold]
+
+        # Summarize older and oldest messages
+        if older_messages:
+            summarized_older = self.summarize_context(older_messages, max_length=80, min_length=20)
+            recent_messages = summarized_older + recent_messages
+
+        if oldest_messages:
+            summarized_oldest = self.summarize_context(oldest_messages, max_length=50, min_length=10)
+            recent_messages = summarized_oldest + recent_messages
+
+        return recent_messages
+
+    def summarize_context(self, messages, max_length=100, min_length=30):
         """
-        #~#~#~# CONTEXT WINDOW MANAGEMENT CHALLENGE #~#~#~#
-        This function creates the context window to be sent to the LLM. The context window is managed list of messages, and constitutes all the information the LLM knows about the conversation.
+        Summarize the given messages, including both user and assistant interactions,
+        using a pre-trained model.
+
+        Args:
+            messages (list): Messages to be summarized, including both user and assistant messages.
+            max_length (int): Maximum length of the summary.
+            min_length (int): Minimum length of the summary.
 
         Returns:
-            list: The context window to be sent to the LLM.
+            list: Summarized content.
         """
-        return self.full_message_history[-4:]  # Very primitive context window management, truncating the message history to the last 4 messages and losing all prior context.
+        # Combine all messages (both user and assistant) into a single string for summarization
+        full_conversation = ' '.join([msg['content'] for msg in messages])
+
+        # Summarize the full conversation
+        summary = self.summarizer(full_conversation, max_length=max_length, min_length=min_length, do_sample=False)
+        summarized_text = summary[0]['summary_text']
+
+        # Return the summary as a single 'assistant' message
+        return [{'role': 'assistant', 'content': summarized_text}]
 
     def send_message(self, prompt: str, role: str = 'user', json_response: bool = False):
         """
-        This function adds the provided prompt to the existing message history, creating a context window for the LLM. 
+        This function adds the provided prompt to the existing message history, creating a context window for the LLM.
         This context window is forwarded to the LLM. The received response from the LLM is then appended to the message history and returned.
 
         Args:
@@ -68,12 +109,12 @@ class llm:
         self.full_message_history.append({'role': 'assistant', 'content': ai_message})
         return ai_message
 
-    #~#~#~# Methods for interacting with OpenAI's Chat Completions EndPoint - You probably won't need to edit anything below this line. #~#~#~#
+    # ~#~#~# Methods for interacting with OpenAI's Chat Completions EndPoint - You probably won't need to edit anything below this line. #~#~#~#
     def gpt4_conversation(self, messages: list, json_response: bool = False, model: str = "gpt-4-1106-preview"):
         """
         Initiates a conversation with the GPT-4 language model using the specified parameters.
 
-        This method sends a list of messages to the GPT-4 model and retrieves the model's response. It allows configuration 
+        This method sends a list of messages to the GPT-4 model and retrieves the model's response. It allows configuration
         of the model and response format.
 
         Args:
@@ -92,7 +133,7 @@ class llm:
             - The 'temperature' parameter controls the randomness of the model's responses. A higher value increases randomness.
             - The 'max_tokens' parameter sets the limit for the response token count. Exceeding this limit triggers a ValueError.
             - The method currently imposes a shorter context window limit for this specific implementation.
-        
+
         Example:
             >>> response = gpt4_conversation([{'role': 'user', 'content': 'Hello, AI!'}])
             >>> print(response)
@@ -109,16 +150,18 @@ class llm:
         # Check if the total token usage exceeds the limit
         # DO NOT CHANGE THIS - This is a requirement for the challenge.
         if response.usage.total_tokens > 4096:
-            raise ValueError("CHALLENGE CONTEXT WINDOW EXCEEDED: The context window now exceeds the 4096 token limit. Please try again with a shorter prompt.")
+            raise ValueError(
+                "CHALLENGE CONTEXT WINDOW EXCEEDED: The context window now exceeds the 4096 token limit. Please try again with a shorter prompt.")
 
         return response
 
-    
-def gpt4_one_shot(self, system_prompt: str, user_prompt: str, json_response: bool = False, model: str = "gpt-4-1106-preview"):
+
+def gpt4_one_shot(self, system_prompt: str, user_prompt: str, json_response: bool = False,
+                  model: str = "gpt-4-1106-preview"):
     """
     Executes a one-shot completion with the GPT-4 language model, using both a system and a user prompt.
 
-    This method is designed for scenarios where a single interaction with the GPT-4 model is required, rather than a 
+    This method is designed for scenarios where a single interaction with the GPT-4 model is required, rather than a
     continuous conversation. It allows specifying both a system-level and a user-level prompt to guide the model's response.
 
     Args:
@@ -138,7 +181,7 @@ def gpt4_one_shot(self, system_prompt: str, user_prompt: str, json_response: boo
         - The 'temperature' parameter influences the model's creativity and unpredictability.
         - The 'max_tokens' parameter sets a limit on the response size.
         - This method is suitable for tasks like generating content, answering questions, or other one-off tasks.
-    
+
     Example:
         >>> response = gpt4_one_shot("Always respond in French.", "Tell a one scentence poem about a robot's adventure.")
         >>> print(response)
@@ -159,6 +202,7 @@ def gpt4_one_shot(self, system_prompt: str, user_prompt: str, json_response: boo
     # Check if the total token usage exceeds the limit
     # DO NOT CHANGE THIS - This is a requirement for the challenge.
     if response.usage.total_tokens > 4096:
-        raise ValueError("CHALLENGE CONTEXT WINDOW EXCEEDED: The context window now exceeds the 4096 token limit. Please try again with a shorter prompt.")
+        raise ValueError(
+            "CHALLENGE CONTEXT WINDOW EXCEEDED: The context window now exceeds the 4096 token limit. Please try again with a shorter prompt.")
 
     return response.choices[0].message.content

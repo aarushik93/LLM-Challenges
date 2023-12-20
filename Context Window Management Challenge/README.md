@@ -4,22 +4,19 @@ This project is a simple command-line interface for having a conversation with O
 
 ## Setup
 
-1. Install Python 3.8 or higher on your system.
-2. Clone this repository or download the project files.
-3. Install the required Python packages using pip:
-
-```
-pip install -r requirements.txt
-```
-
-4. Place the provided OpenAI API key in the `main.py` file where indicated.
+1. Install Docker on your machine.
 
 ## Running the Project
 
-To start a conversation with the AI, run the `main.py` script:
+First build the docker image (folder location: Context Window Management Challenge )
 
 ```
-python main.py
+docker build . -t llm-memory 
+```
+Next run in interactive mode so you can input text
+
+```
+docker run -it llm-memory 
 ```
 
 Type your messages into the CLI and receive responses from the AI. Type 'quit' to end the conversation.
